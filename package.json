@@ -11,12 +11,17 @@
     "build:kernel": "node scripts/build-kernel.mjs",
     "test:physics": "node --experimental-strip-types scripts/verify-physics.mjs",
     "test:multitouch": "node --experimental-strip-types scripts/verify-multitouch.mjs",
+    "test:hop": "node --experimental-strip-types scripts/verify-hop.mjs && node --experimental-strip-types scripts/verify-hop-input.mjs && node --experimental-strip-types scripts/verify-hop-ui.mjs",
+    "test:skins": "node --experimental-strip-types scripts/verify-skins.mjs",
     "test:performance": "node --experimental-strip-types scripts/verify-performance.mjs",
     "benchmark": "node --experimental-strip-types scripts/benchmark.mjs",
     "build": "tsc && vite build",
+    "android:sync": "npm run build && cap sync android",
+    "android:build:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@eslint/js": "^10.0.1",
     "@types/delaunator": "^5.0.3",
     "@types/three": "^0.185.4",
@@ -26,6 +31,9 @@
     "vite": "^8.2.2"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.1",
     "delaunator": "^5.1.0",
     "three": "^0.185.0"
   }

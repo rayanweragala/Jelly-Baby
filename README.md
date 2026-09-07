@@ -1,4 +1,24 @@
-# Jelly Baby
+# Jelly Hop
+
+A small Android tabletop game built on Jelly Baby's original soft-body character,
+face, Three.js optics and contact sound. Stretch toward the green ring and release;
+let the jelly settle to finish each of five levels. Includes eight immediately
+available material skins, live preview, local best throws/unlocks, retry/reset,
+mute, recovery and the original interactions in Free play.
+
+Android packaging uses Capacitor with bundled local assets. It still needs WebGPU
+inside the phone's actual WebView; packaging does not solve renderer compatibility.
+See [Android build and physical-device testing](docs/ANDROID_TESTING.md) for exact
+commands and verification limits, and [asset permissions](docs/ASSET_PERMISSIONS.md)
+before redistribution. No release signing or publishing is configured.
+
+```sh
+npm run test:hop
+npm run test:skins
+npm run android:build:debug # JDK 21 + Android SDK 36 required
+```
+
+## Original Jelly Baby implementation
 
 A WebGPU-only, Three.js r185 playground. The supplied EXR lights the scene; the
 wood maps repeat every 2.5 metres. The baby is modelled at approximately 7 cm.
@@ -40,7 +60,9 @@ bounded work and perceptually close approximations where full simulation causes 
   barycentric embedding; contacts lie on the actual visible surface. The original
   smooth SDF normals follow the deformation. Position and normal BufferAttributes
   remain the fully deformed CPU surface used by rendering, picking and facial
-  attachment; there is no lower-poly or shader-only visual substitute. The face
+  attachment on desktop. Android samples the same SDF at lower resolution and
+  deforms its surface on the GPU, with exact CPU sampling for picking and face
+  attachment. Generate it with `node scripts/build-model.mjs --mobile`. The face
   follows the skin. Details are
   tessellated, kept outside the skin, and drawn after transmission so they cannot
   contaminate the opaque refraction buffer and produce duplicate images.
@@ -69,7 +91,7 @@ bounded work and perceptually close approximations where full simulation causes 
   The floor removes that source's occluded diffuse contribution and reconstructs
   transmitted flux. Environment illumination supplies the rest, without a second
   light duplicating the window. The environment is not drawn as a background.
-- Linear HDR compositing adds restrained highlight bloom and a subtle grade,
+- Linear HDR compositing applies a subtle grade without bloom,
   followed by a single AgX tone/output transform.
 - Grab stencils reconstruct the selected surface point exactly. Pointer smoothing
   is short and force remains limited by XPBD. Dragging against the floor intersects
@@ -105,11 +127,9 @@ flux/thickness agreement, and the actual worker's transferable two-stage respons
 and camera-only reuse.
 
 `npm run benchmark` reports CPU timings for walking and a severe stretch. The
-optimization is intended to reduce main-thread solver/surface time without changing
-mesh resolution, material parameters, grab constants, XPBD iteration order, or the
-resulting visible positions/normals.
+desktop optimization reduces main-thread solver/surface time without changing
+mesh resolution or XPBD iteration order. Android additionally uses a compact
+mesh/cage and single-sample refraction to reduce rendering and simulation cost.
 
-Per project instructions, no development server or browser inspection was run
-during implementation. GPU shader execution, visual quality, touch feel, and sound
-still need inspection in the target browser. WebGL fallback is disabled, and GPU
-startup/runtime failures are surfaced with diagnostics.
+See the Android guide for physical-device checks and remaining validation gaps.
+WebGL fallback is disabled; GPU startup/runtime failures surface with diagnostics.

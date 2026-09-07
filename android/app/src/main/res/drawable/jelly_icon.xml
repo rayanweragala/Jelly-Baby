@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFF4DF" android:pathData="M0,0H108V108H0Z"/>
+    <!-- Existing Jelly Baby favicon silhouette, inset for launcher masks. -->
+    <group android:translateX="22" android:translateY="22">
+        <path android:fillColor="#A5CC58" android:pathData="M32,5C17,5 13,17 13,33C3,26 2,41 12,45C7,59 20,62 29,56C34,62 52,61 51,46C63,40 60,27 51,34C51,17 46,5 32,5Z"/>
+        <path android:fillColor="#D8ECAD" android:pathData="M20,18C22,9 37,8 42,14C33,11 25,13 20,23Z"/>
+        <path android:fillColor="#294215" android:pathData="M21,29a3,4 0,1 0,6 0a3,4 0,1 0,-6 0M38,29a3,4 0,1 0,6 0a3,4 0,1 0,-6 0M27,38Q32,41 38,38Q36,48 30,43Z"/>
+    </group>
+</vector>
