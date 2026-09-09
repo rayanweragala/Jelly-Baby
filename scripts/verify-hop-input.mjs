@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { PerspectiveCamera, Mesh, Vector3 } from 'three/webgpu';
 import { Input } from '../src/game/input.ts';
+import { Arena } from '../src/game/arena.ts';
 import { HopRound, LEVELS } from '../src/game/hop-rules.ts';
 import { SoftBody } from '../src/physics/soft-body.js';
 import { PHYS } from '../src/physics/constants.js';
@@ -54,7 +55,7 @@ function setup() {
   );
   const state = { releases: 0 };
   input.onRelease = () => state.releases++;
-  return { body, rig, camera, input, canvas, captured, state };
+  return { body, rig, camera, input, canvas, captured, state, arena: new Arena() };
 }
 
 function pointEvent(
@@ -101,6 +102,10 @@ function physicsTick(ctx) {
   ctx.input.step(step);
   ctx.rig.step(step);
   ctx.body.step(step);
+  if (ctx.input.mode === 'hop') {
+    ctx.arena.update(ctx.camera);
+    ctx.arena.contain(ctx.body);
+  }
   ctx.rig.afterStep();
   ctx.input.afterPhysicsStep();
 }
@@ -124,6 +129,14 @@ function grabPoint(body) {
   ctx.input.setMode('hop');
   ctx.input.begin(pointEvent(ctx.camera, grabPoint(ctx.body)));
   assert.equal(ctx.body.grabs.length, 1, 'hop mode allows first grip');
+  const cueStart = new Vector3(),
+    cueEnd = new Vector3();
+  assert.equal(ctx.input.getStretchCue(cueStart, cueEnd), false, 'no cue for a stationary grab');
+  ctx.input.pointerMove(
+    pointEvent(ctx.camera, grabPoint(ctx.body), { type: 'pointermove', dx: -30, dy: -20 }),
+  );
+  assert(ctx.input.getStretchCue(cueStart, cueEnd), 'stretch produces a finite direction cue');
+  assert(cueEnd.x < cueStart.x && cueEnd.y > cueStart.y);
   ctx.input.begin(pointEvent(ctx.camera, grabPoint(ctx.body), { id: 2, dx: 25 }));
   assert.equal(ctx.body.grabs.length, 1, 'hop mode remains one-finger');
   assert.equal(ctx.input.controls.enabled, false, 'hop disables orbit during grip');
@@ -135,6 +148,7 @@ function grabPoint(body) {
     0,
     'pointerup does not count before physics consumes final sample',
   );
+  assert.equal(ctx.input.getStretchCue(cueStart, cueEnd), false, 'cue hides at pointerup');
   physicsTick(ctx);
   assert.equal(ctx.state.releases, 0, 'first consumption tick still retained for impulse');
   physicsTick(ctx);
@@ -146,6 +160,38 @@ function grabPoint(body) {
   ctx.body.reset();
   ctx.input.update(step);
   assert.equal(ctx.input.controls.enabled, false, 'hop orbit remains disabled after reset');
+  ctx.input.dispose();
+}
+
+{
+  const ctx = setup();
+  settle(ctx);
+  ctx.input.setMode('hop');
+  const point = grabPoint(ctx.body);
+  let edge;
+  for (let dx = 0; dx < 180; dx += 2) {
+    const e = pointEvent(ctx.camera, point, { pointerType: 'mouse', dx });
+    ctx.input.begin(e);
+    if (!ctx.body.grab) {
+      edge = dx;
+      break;
+    }
+    ctx.input.clear();
+  }
+  assert(edge > 0, 'find a point just beyond the exact silhouette');
+  const e = pointEvent(ctx.camera, point, { dx: edge });
+  ctx.input.begin(e);
+  assert.equal(ctx.body.grabs.length, 1, 'touch edge tolerance acquires the visible skin');
+  const state = [...ctx.input.grabs.values()][0];
+  ctx.input.pointerMove({ ...e, type: 'pointermove' });
+  assert(
+    state.rawTarget.distanceTo(state.grab.point) < 1e-6,
+    'edge correction introduces no target jump',
+  );
+  ctx.input.clear();
+  const a = new Vector3(),
+    b = new Vector3();
+  assert.equal(ctx.input.getStretchCue(a, b), false, 'cancel clears cue');
   ctx.input.dispose();
 }
 

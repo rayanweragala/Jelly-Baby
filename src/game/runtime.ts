@@ -18,6 +18,7 @@ import {
 } from '../graphics/renderer.ts';
 import { OpticalTransport } from '../graphics/transport.ts';
 import { createComposite } from '../graphics/composite.ts';
+import { Arena } from './arena.ts';
 import { FixedStepper } from './fixed-step.ts';
 import { JELLY_FLAVORS } from '../graphics/jelly-flavors.ts';
 import { FlavorPicker } from './flavor-picker.ts';
@@ -60,8 +61,8 @@ export async function startGame(
     const sound = new JellySound();
     own(() => sound.dispose());
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#e8d9c3');
-    scene.fog = new THREE.Fog('#e8d9c3', 2, 12);
+    scene.background = new THREE.Color('#0e2b36');
+    scene.fog = new THREE.Fog('#0e2b36', 2, 12);
     const camera = new THREE.PerspectiveCamera(36, 1, 0.001, 40);
     camera.position.set(0.082, 0.126, 0.19);
     stage('Reading the light');
@@ -74,20 +75,22 @@ export async function startGame(
       'Model',
       `${mobile ? 'Android' : 'Original'} surface; ${body.surface.positions.length / 3} vertices; ${body.elements.length} soft-body elements`,
     );
-    const baby = new Baby(body, mobile);
-    scene.add(baby.group);
-    own(() => baby.dispose());
     const optics = new RefractiveLightField(
       body.cage.opticalSurface,
       environment.incoming,
       ABSORPTION,
     );
     own(() => optics.dispose());
+    const baby = new Baby(body, mobile, optics, environment.windowFraction);
+    scene.add(baby.group);
+    own(() => baby.dispose());
     const table = await makeTable(optics, environment);
     scene.add(table.mesh);
     own(() => table.dispose());
     const composite = createComposite(renderer, scene, camera);
     own(() => composite.dispose());
+    // The visible tabletop is the room: throws bounce off the frame instead of leaving the view.
+    const arena = new Arena();
     const rig = new Locomotion(body);
     const flavorPicker = new FlavorPicker((flavor) => {
       baby.setFlavor(flavor);
@@ -112,6 +115,11 @@ export async function startGame(
     const input = new Input(camera, renderer.domElement, body, baby.mesh, rig, sound, reset);
     own(() => input.dispose());
     hop = new HopGame(scene, body, input, flavorPicker, resetBody);
+    hop.onFeedback = (cue) => sound.cue(cue);
+    hop.onComplete = () => {
+      baby.celebrate();
+      sound.cue('win');
+    };
     own(() => hop.dispose());
     const setActive = (value: boolean) => {
       active = value;
@@ -203,6 +211,8 @@ export async function startGame(
       'GPU work completed; visible output needs physical-device confirmation',
     );
     lastTime = performance.now();
+    const stretchStart = new THREE.Vector3(),
+      stretchEnd = new THREE.Vector3();
     const frame = (time: number) => {
       if (disposed) return;
       try {
@@ -213,20 +223,32 @@ export async function startGame(
           physicsClock.reset();
           return;
         }
-        const steps = physicsClock.advance(dt, () => {
-          input.step(PHYS.step);
-          rig.step(PHYS.step);
-          body.step(PHYS.step);
-          input.afterPhysicsStep();
-          rig.afterStep();
-        });
+        // Framing moves with the level and the device rotation, so re-measure once a frame
+        // rather than once per sub-step.
+        if (input.mode === 'hop') arena.update(camera);
+        if (hop.paused) physicsClock.reset();
+        const steps = hop.paused
+          ? 0
+          : physicsClock.advance(dt, () => {
+              input.step(PHYS.step);
+              rig.step(PHYS.step);
+              body.step(PHYS.step);
+              if (input.mode === 'hop') arena.contain(body);
+              input.afterPhysicsStep();
+              rig.afterStep();
+            });
         hop.update(steps * PHYS.step);
+        sound.stretch(
+          input.getStretchCue(stretchStart, stretchEnd)
+            ? Math.hypot(stretchEnd.x - stretchStart.x, stretchEnd.y - stretchStart.y) / 0.7
+            : null,
+        );
         if (steps && body.surfaceDirty) {
           if (!body.isFinite())
             throw new Error('The soft-body simulation produced an invalid state');
           body.updateSurface();
         }
-        baby.update(dt);
+        baby.update(hop.paused ? 0 : dt);
         input.update(dt);
         transport.follow();
         optics.update(renderer, body);

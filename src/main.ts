@@ -4,6 +4,31 @@ import { diagnostic, mountDiagnostics, showDiagnostics } from './game/diagnostic
 import { nativeDiagnostics } from './game/android.ts';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = hopMarkup;
+const motion = document.querySelector<HTMLButtonElement>('#motion')!;
+const systemMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const setMotion = (reduced: boolean) => {
+  document.body.dataset.reducedMotion = String(reduced);
+  motion.setAttribute('aria-pressed', String(reduced));
+  motion.textContent = reduced ? 'Reduced motion on' : 'Reduce motion';
+};
+setMotion(systemMotion.matches);
+try {
+  if (localStorage.getItem('jelly-hop-reduced-motion') === 'true') setMotion(true);
+} catch {
+  // System preference remains available when storage is blocked.
+}
+motion.addEventListener('click', () => {
+  const reduced = motion.getAttribute('aria-pressed') !== 'true';
+  setMotion(reduced);
+  try {
+    localStorage.setItem('jelly-hop-reduced-motion', String(reduced));
+  } catch {
+    window.dispatchEvent(new CustomEvent('jelly-storage-error'));
+  }
+});
+systemMotion.addEventListener('change', () => {
+  if (systemMotion.matches) setMotion(true);
+});
 // Diagnostics mount before startup so an early GPU failure still has somewhere to report.
 mountDiagnostics();
 nativeDiagnostics();

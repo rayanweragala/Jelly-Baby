@@ -4,6 +4,7 @@ import { BabyFace } from './baby-face.ts';
 import type { SoftBody } from '../physics/soft-body.js';
 import { DEFAULT_JELLY_FLAVOR, JELLY_FLAVORS, type JellyFlavorName } from './jelly-flavors.ts';
 import { jellyRefraction } from './jelly-refraction.ts';
+import type { RefractiveLightField } from './refractive-light.js';
 import { JellyDeformation } from './jelly-deformation.ts';
 
 export const ABSORPTION = JELLY_FLAVORS[DEFAULT_JELLY_FLAVOR].absorption;
@@ -16,7 +17,12 @@ export class Baby {
   private readonly updateRefraction: ReturnType<typeof jellyRefraction> | null;
   private readonly deformation: JellyDeformation | null;
   readonly body: SoftBody;
-  constructor(body: SoftBody, compact = false) {
+  constructor(
+    body: SoftBody,
+    compact = false,
+    optics: RefractiveLightField | null = null,
+    windowFraction = 0,
+  ) {
     this.body = body;
     const material = new THREE.MeshPhysicalNodeMaterial({
       color: JELLY_FLAVORS[DEFAULT_JELLY_FLAVOR].surface,
@@ -35,7 +41,7 @@ export class Baby {
       flatShading: false,
     });
     this.jellyMaterial = material;
-    this.updateRefraction = compact ? jellyRefraction(material) : null;
+    this.updateRefraction = compact ? jellyRefraction(material, optics, windowFraction) : null;
     material.thicknessNode = attribute('opticalThickness', 'float');
     this.setFlavor(DEFAULT_JELLY_FLAVOR);
     this.mesh = new THREE.Mesh(body.surface.geometry, material);
@@ -71,6 +77,9 @@ export class Baby {
   }
   resetFace() {
     this.face.reset();
+  }
+  celebrate() {
+    this.face.celebrate();
   }
   dispose() {
     this.group.traverse((object) => {

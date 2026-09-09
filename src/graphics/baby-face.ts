@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { attribute, vec2, vec3 } from 'three/tsl';
 import type { SoftBody } from '../physics/soft-body.js';
 import { refinePatch } from './surface-details.ts';
 import { FaceSkin, type FaceSkinBinding } from './face-skin.ts';
@@ -24,6 +25,7 @@ export class BabyFace {
   private lastBlink = -1;
   private lastSob = -1;
   private lastLaugh = -1;
+  private lastSurprise = -1;
   private readonly body: SoftBody;
   constructor(body: SoftBody, group: THREE.Group, compact = false) {
     this.body = body;
@@ -34,6 +36,18 @@ export class BabyFace {
       clearcoat: 1,
       clearcoatRoughness: 0.06,
     });
+    // A dome this small almost never catches the window, and an eye with no highlight reads as
+    // painted on. Anchor the catchlight to the rest coordinates rather than the live ones: the
+    // live positions are overwritten with deformed world space every frame, so a normal- or
+    // position-driven highlight would slide around during a blink and the sob chevron.
+    const eyeSpace = attribute('restPosition', 'vec3') as unknown as ReturnType<typeof vec3>;
+    const catchlight = eyeSpace.xy
+      .sub(vec2(-0.0012, 0.0017))
+      .div(vec2(0.0011, 0.0012))
+      .length()
+      .oneMinus()
+      .smoothstep(0, 0.55);
+    eye.emissiveNode = vec3(0.78, 0.82, 0.72).mul(catchlight);
     const mouth = new THREE.MeshPhysicalNodeMaterial({
       color: '#254508',
       roughness: 0.24,
@@ -60,6 +74,9 @@ export class BabyFace {
       kind: Feature,
     ) => {
       const rest = new Float32Array(geometry.getAttribute('position').array);
+      // Keep the undeformed coordinates addressable from the shader; `position` is about to
+      // become a live world-space buffer.
+      geometry.setAttribute('restPosition', new THREE.BufferAttribute(rest, 3));
       geometry.setAttribute(
         'position',
         new THREE.BufferAttribute(new Float32Array(rest.length), 3).setUsage(
@@ -130,9 +147,17 @@ export class BabyFace {
   reset() {
     this.expression.reset();
   }
+  celebrate() {
+    this.expression.celebrate();
+  }
   update(dt: number) {
-    this.expression.update(dt, this.body.grabs.length > 0);
-    const { sob, laugh, blink, time } = this.expression;
+    this.expression.update(
+      dt,
+      this.body.grabs.length > 0,
+      !this.body.grounded,
+      this.body.grounded ? 0 : Math.sqrt((2 * this.body.energy()) / this.body.totalMass),
+    );
+    const { sob, laugh, blink, time, surprise } = this.expression;
     const version = this.body.gpuSurface
       ? this.body.surfaceRevision
       : this.body.surface.geometry.attributes.position.version;
@@ -141,6 +166,7 @@ export class BabyFace {
       blink === this.lastBlink &&
       sob === this.lastSob &&
       laugh === this.lastLaugh &&
+      surprise === this.lastSurprise &&
       sob === 0 &&
       laugh === 0
     )
@@ -149,6 +175,7 @@ export class BabyFace {
     this.lastBlink = blink;
     this.lastSob = sob;
     this.lastLaugh = laugh;
+    this.lastSurprise = surprise;
     const quiver = Math.sin(time * 33) * 0.00022 * sob;
     const chuckle = (0.5 + 0.5 * Math.sin(time * 19)) * laugh;
     for (const { mesh, rest, bindings, cx, cy, depth, kind } of this.details) {
@@ -158,6 +185,7 @@ export class BabyFace {
           y = rest[i * 3 + 1],
           z = rest[i * 3 + 2];
         if (kind === 'eye') {
+          y *= 1 + surprise * 0.13;
           // Fold the original oval into a thin chevron, with its point facing
           // the nose. Keeping the vertical parameter gives two distinct arms.
           // Allow for the diagonal arms so their visible width matches the brows.
@@ -173,12 +201,15 @@ export class BabyFace {
           y += (squeezedY - y) * sob;
           z += (squeezedZ - z) * sob;
         } else if (kind === 'brow') {
+          y += surprise * 0.001;
           const inner = (-Math.sign(cx) * x) / 0.0021;
           y += sob * (0.0006 + inner * 0.0011) + laugh * 0.00055;
           y += quiver * 0.6;
         } else if (kind === 'mouth' || kind === 'tongue') {
           // Transform mouth and tongue in one shared frame to keep the tongue inside.
           y += cy - 0.0389;
+          x *= 1 - surprise * 0.3;
+          y *= 1 + surprise * 0.25;
           x *= 1 - sob * 0.22 + laugh * 0.18;
           y *= 1 - sob * 0.48 + chuckle * 0.32;
           y += sob * (0.0011 - 0.003 * (x / 0.0046) ** 2) + quiver;

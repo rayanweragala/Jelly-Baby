@@ -1,10 +1,33 @@
 # Jelly Hop
 
-A small Android tabletop game built on Jelly Baby's original soft-body character,
-face, Three.js optics and contact sound. Stretch toward the green ring and release;
+A small Android tidepool game built on Jelly Baby's original soft-body character,
+face, Three.js optics and contact sound. Stretch toward the marked stone and release;
 let the jelly settle to finish each of five levels. Includes eight immediately
 available material skins, live preview, local best throws/unlocks, retry/reset,
-mute, recovery and the original interactions in Free play.
+mute, pause/resume, reduced motion, recovery and the original interactions in Free play.
+
+**Upstream credit:** this fork adapts [Jelly Baby by scottstts](https://github.com/scottstts/Jelly-Baby).
+The original character, soft-body simulation, facial system, optical foundation and
+procedural contact audio come from that project and its contributors. This fork adds
+the Jelly Hop game, Low Tide presentation and Android packaging. Existing third-party
+notices and [asset permission notes](docs/ASSET_PERMISSIONS.md) are preserved.
+
+## Android screenshots
+
+Actual CPH2469 phone captures from September 8–9, 2026: home, a held stretch,
+skin selection and a completed level. These show the current five-level build;
+the proposed octopus redesign is not implemented. Adaptive resolution is visible.
+
+<p>
+  <img src="docs/screenshots/home.png" width="180" alt="Jelly Hop home screen with lime jelly and Low Tide navigation">
+  <img src="docs/screenshots/aiming.png" width="180" alt="A held stretch showing the power ring and direction beads">
+  <img src="docs/screenshots/skins.png" width="180" alt="Eight available skins with the pearl jelly preview">
+  <img src="docs/screenshots/completion.png" width="180" alt="Level three completed in two throws with par two">
+</p>
+
+The next design direction is described in the [Claude Design brief](docs/CLAUDE_DESIGN_BRIEF.md).
+
+## Build and run
 
 Android packaging uses Capacitor with bundled local assets. It still needs WebGPU
 inside the phone's actual WebView; packaging does not solve renderer compatibility.
@@ -129,7 +152,7 @@ and camera-only reuse.
 `npm run benchmark` reports CPU timings for walking and a severe stretch. The
 desktop optimization reduces main-thread solver/surface time without changing
 mesh resolution or XPBD iteration order. Android additionally uses a compact
-mesh/cage and single-sample refraction to reduce rendering and simulation cost.
+mesh/cage and local single-pass gel shading to reduce rendering and simulation cost.
 
 See the Android guide for physical-device checks and remaining validation gaps.
 WebGL fallback is disabled; GPU startup/runtime failures surface with diagnostics.

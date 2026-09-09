@@ -6,6 +6,7 @@ export class JellySound {
   private compressor: DynamicsCompressorNode | null = null;
   private resumePromise: Promise<void> | null = null;
   private outputPrimed = false;
+  private stretchTone: { oscillator: OscillatorNode; gain: GainNode } | null = null;
   private abort = new AbortController();
   muted = false;
   private suspended = false;
@@ -70,14 +71,82 @@ export class JellySound {
   }
   toggle() {
     this.muted = !this.muted;
+    if (this.muted) this.stretch(null);
     if (this.context && this.master)
       this.master.gain.setTargetAtTime(this.muted ? 0 : 0.62, this.context.currentTime, 0.025);
     return this.muted;
   }
   setActive(active: boolean) {
     this.suspended = !active;
+    if (!active) this.stretch(null);
     if (!active && this.context?.state === 'running') void this.context.suspend().catch(() => {});
     if (active && this.context) void this.unlock().catch(() => {});
+  }
+  stretch(power: number | null) {
+    const ctx = this.context;
+    if (
+      power === null ||
+      !Number.isFinite(power) ||
+      !ctx ||
+      !this.master ||
+      ctx.state !== 'running' ||
+      this.muted ||
+      this.suspended
+    ) {
+      if (this.stretchTone) {
+        this.stretchTone.oscillator.stop();
+        this.stretchTone.oscillator.disconnect();
+        this.stretchTone.gain.disconnect();
+        this.stretchTone = null;
+      }
+      return;
+    }
+    const amount = Math.max(0, Math.min(1, power));
+    if (!this.stretchTone) {
+      const oscillator = ctx.createOscillator(),
+        gain = ctx.createGain();
+      oscillator.type = 'sine';
+      gain.gain.value = 0;
+      oscillator.connect(gain).connect(this.master);
+      oscillator.start();
+      this.stretchTone = { oscillator, gain };
+    }
+    this.stretchTone.oscillator.frequency.setTargetAtTime(
+      150 + amount * 260,
+      ctx.currentTime,
+      0.035,
+    );
+    this.stretchTone.gain.gain.setTargetAtTime(0.015 + amount * 0.035, ctx.currentTime, 0.02);
+  }
+  cue(name: 'release' | 'settle' | 'reset' | 'menu' | 'win') {
+    const ctx = this.context,
+      out = this.master;
+    if (!ctx || !out || ctx.state !== 'running' || this.muted || this.suspended) return;
+    const notes = {
+      release: [420, 210],
+      settle: [220],
+      reset: [260, 180],
+      menu: [360],
+      win: [330, 440, 550],
+    }[name];
+    // Reuse Web Audio for short wet tones; no audio downloads or decoding on first touch.
+    notes.forEach((frequency, index) => {
+      const oscillator = ctx.createOscillator(),
+        gain = ctx.createGain();
+      const start = ctx.currentTime + index * 0.08;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * 0.9, start + 0.16);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(name === 'menu' ? 0.035 : 0.09, start + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+      oscillator.connect(gain).connect(out);
+      oscillator.start(start);
+      oscillator.stop(start + 0.22);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      };
+    });
   }
   contact(speed: number, foot: boolean) {
     const ctx = this.context,
@@ -130,6 +199,7 @@ export class JellySound {
   }
   dispose() {
     this.abort.abort();
+    this.stretch(null);
     this.master?.disconnect();
     this.compressor?.disconnect();
     const context = this.context;

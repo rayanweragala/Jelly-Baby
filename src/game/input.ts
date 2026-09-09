@@ -12,6 +12,8 @@ type PointerGrab = {
   pointerType: string;
   plane: THREE.Plane;
   rawTarget: THREE.Vector3;
+  start: THREE.Vector3;
+  pointerOffset: THREE.Vector2;
   releasePending: boolean;
   releaseStepsRemaining: number;
   physicsSteps: number;
@@ -178,13 +180,14 @@ export class Input {
     joystick?.classList.remove('held');
     if (id !== null && joystick?.hasPointerCapture(id)) joystick.releasePointerCapture(id);
   };
-  private eventRay(e: PointerEvent) {
+  private eventRay(e: PointerEvent, offset?: THREE.Vector2) {
     const rect = this.canvas.getBoundingClientRect();
     this.pointer.set(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
       (-(e.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.camera.updateMatrixWorld();
+    if (offset) this.pointer.add(offset);
     this.raycaster.setFromCamera(this.pointer, this.camera);
   }
   private captureDragTarget(e: PointerEvent, state: PointerGrab) {
@@ -192,7 +195,7 @@ export class Input {
     // it also makes very fast high-polling-rate mouse motion deterministic.
     const samples = e.getCoalescedEvents?.() ?? [];
     const sample = samples.length ? samples[samples.length - 1] : e;
-    this.eventRay(sample);
+    this.eventRay(sample, state.pointerOffset);
     if (projectGrabTarget(this.raycaster.ray, state.plane, this.temp)) {
       state.rawTarget.copy(this.temp);
       state.commandVersion++;
@@ -220,7 +223,25 @@ export class Input {
     const ray = this.raycaster.ray,
       o = [ray.origin.x, ray.origin.y, ray.origin.z],
       d = [ray.direction.x, ray.direction.y, ray.direction.z];
-    const hit = this.grabBVH.hit(o, d);
+    let hit = this.grabBVH.hit(o, d);
+    const pointerOffset = new THREE.Vector2();
+    if (!hit && e.pointerType === 'touch' && this.mode === 'hop') {
+      const rect = this.canvas.getBoundingClientRect();
+      // Forgive a 10px edge miss, then retain that offset so the grip never jumps.
+      for (const [dx, dy] of [
+        [0, -10],
+        [-10, 0],
+        [10, 0],
+        [0, 10],
+      ]) {
+        pointerOffset.set((2 * dx) / rect.width, (-2 * dy) / rect.height);
+        this.eventRay(e, pointerOffset);
+        ray.origin.toArray(o);
+        ray.direction.toArray(d);
+        hit = this.grabBVH.hit(o, d);
+        if (hit) break;
+      }
+    }
     if (!hit) return;
     const ix = this.body.surface.indices,
       offset = hit.t * 3;
@@ -239,6 +260,8 @@ export class Input {
       pointerType: e.pointerType,
       plane: new THREE.Plane().setFromNormalAndCoplanarPoint(this.temp, point),
       rawTarget: point.clone(),
+      start: point.clone(),
+      pointerOffset,
       releasePending: false,
       releaseStepsRemaining: 0,
       physicsSteps: 0,
@@ -416,6 +439,21 @@ export class Input {
     this.camera.position.add(this.temp);
     this.controls.target.copy(this.follow);
     this.controls.update();
+  }
+  getStretchCue(start: THREE.Vector3, end: THREE.Vector3) {
+    if (this.mode !== 'hop') return false;
+    for (const state of this.grabs.values()) {
+      if (state.releasePending || state.start.distanceToSquared(state.rawTarget) < 0.000004)
+        continue;
+      start.copy(state.start).project(this.camera);
+      end.copy(state.rawTarget).project(this.camera);
+      return (
+        [start.x, start.y, start.z, end.x, end.y, end.z].every(Number.isFinite) &&
+        Math.abs(start.z) <= 1 &&
+        Math.abs(end.z) <= 1
+      );
+    }
+    return false;
   }
   recenter() {
     this.clear();

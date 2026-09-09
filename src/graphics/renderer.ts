@@ -109,11 +109,26 @@ export function currentQualityScale() {
   return qualityScale;
 }
 
+// Climbing after a single good window made the phone flip 0.45 <-> 0.55 every couple of seconds:
+// a step up costs ~1.5x the fill, so 50 fps at one scale is ~38 at the next and it drops straight
+// back. Each flip reallocates the render targets and visibly pops sharpness. Only climb on a
+// sustained run with enough headroom to survive the step.
+const CLIMB_FPS = 57;
+const CLIMB_WINDOWS = 3;
+let headroomWindows = 0;
+
 /** Returns true when the scale moved and the view needs resizing. */
 export function adaptQuality(fps: number) {
   const previous = qualityScale;
-  if (fps < 45) qualityScale = Math.max(MIN_QUALITY_SCALE, qualityScale * 0.82);
-  else if (fps > 50) qualityScale = Math.min(1, qualityScale / 0.82);
+  if (fps < 45) {
+    headroomWindows = 0;
+    qualityScale = Math.max(MIN_QUALITY_SCALE, qualityScale * 0.82);
+  } else if (fps <= CLIMB_FPS) {
+    headroomWindows = 0;
+  } else if (++headroomWindows >= CLIMB_WINDOWS) {
+    headroomWindows = 0;
+    qualityScale = Math.min(1, qualityScale / 0.82);
+  }
   return qualityScale !== previous;
 }
 

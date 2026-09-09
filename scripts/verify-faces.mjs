@@ -111,6 +111,34 @@ assert(expression.laugh > 0.7);
 for (let i = 0; i < 360; i++) expression.update(1 / 60, false);
 assert.equal(expression.sob, 0);
 assert.equal(expression.laugh, 0);
+for (let i = 0; i < 60; i++) expression.update(1 / 60, false, true);
+assert(expression.surprise > 0.99, 'airborne eyes widen');
+expression.update(1 / 60, false, false);
+assert(expression.blink > 0, 'landing triggers a blink');
+expression.celebrate();
+for (let i = 0; i < 45; i++) expression.update(1 / 60, false);
+assert(expression.laugh > 0.7, 'winning triggers a smile without a grab');
+expression.reset();
+assert.equal(expression.surprise, 0);
+assert.equal(expression.laugh, 0);
+for (let i = 0; i < 180; i++) expression.update(1 / 60, false, true, 0.8);
+assert.equal(expression.blink, 0, 'idle blink is suppressed during flight');
+for (let i = 0; i < 8; i++) expression.update(1 / 60, false, false);
+assert(expression.sob > 0.5, 'hard impact briefly squeezes the face');
+expression.reset();
+expression.update(1 / 60, false, true, 0.1);
+for (let i = 0; i < 8; i++) expression.update(1 / 60, false, false);
+assert.equal(expression.sob, 0, 'soft impact keeps the relaxed face');
+// The catchlight is placed in rest coordinates, so it only stays put through a blink while the
+// eyes still carry that attribute alongside their live world-space positions.
+for (const { mesh, rest, kind } of face.details) {
+  const anchored = mesh.geometry.attributes.restPosition;
+  assert(anchored, 'face detail keeps its undeformed coordinates');
+  assert.deepEqual([...anchored.array], [...rest], 'rest attribute matches the artwork');
+  assert.notEqual(anchored.array, mesh.geometry.attributes.position.array);
+  if (kind === 'eye') assert(mesh.material.emissiveNode, 'eyes carry a catchlight');
+}
+
 console.log(
-  'Face checks passed: original pose, animation coverage, multiple grabs, release, reset and deformed attachment.',
+  'Face checks passed: original pose, animation coverage, multiple grabs, release, reset, deformed attachment and eye catchlights.',
 );

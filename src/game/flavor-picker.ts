@@ -25,7 +25,9 @@ export function flavorPickerMarkup() {
         <circle cx="17.2" cy="9.8" r="1.25" fill="#5B8CFF"/>
       </svg>
     </button>
-    <div id="flavor-menu" class="flavor-menu" role="group" aria-label="Jelly flavor choices" hidden>${options}
+    <div id="flavor-menu" class="flavor-menu" role="group" aria-label="Jelly flavor choices" hidden>
+      <h2 class="flavor-heading">Skins</h2><p id="wearing-flavor" aria-live="polite">Wearing ${JELLY_FLAVORS[DEFAULT_JELLY_FLAVOR].label}</p>${options}
+      <p class="flavor-caption">Tap a swatch to try it instantly.</p>
       <button id="skins-done" class="flavor-done">Done</button>
     </div>
   </div>`;
@@ -109,6 +111,8 @@ export class FlavorPicker {
 
   private setSelected(name: JellyFlavorName) {
     const label = JELLY_FLAVORS[name].label;
+    const wearing = this.root.querySelector('#wearing-flavor');
+    if (wearing) wearing.textContent = `Wearing ${label}`;
     this.button.title = `Jelly flavor: ${label}`;
     this.button.setAttribute('aria-label', `Choose jelly flavor (currently ${label})`);
     this.options.forEach((option) =>

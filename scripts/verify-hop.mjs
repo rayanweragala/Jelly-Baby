@@ -7,6 +7,7 @@ import {
   needsRecovery,
   recordWin,
   serializeProgress,
+  medalForAccuracy,
 } from '../src/game/hop-rules.ts';
 
 const sample = (level, patch = {}) => ({
@@ -128,6 +129,8 @@ assert.equal(needsRecovery(sample(LEVELS[0], { x: Infinity })), true);
     version: 1,
     unlocked: 1,
     best: [null, null, null, null, null],
+    accuracy: [null, null, null, null, null],
+    score: [null, null, null, null, null],
     hintSeen: false,
   });
   const won = recordWin(fresh, 0, 4);
@@ -166,6 +169,8 @@ assert.equal(needsRecovery(sample(LEVELS[0], { x: Infinity })), true);
       version: 1,
       unlocked: 5,
       best: [3, null, null, 999, 8],
+      accuracy: [null, null, null, null, null],
+      score: [null, null, null, null, null],
       hintSeen: true,
     },
   );
@@ -175,9 +180,100 @@ assert.equal(needsRecovery(sample(LEVELS[0], { x: Infinity })), true);
       version: 1,
       unlocked: 1,
       best: [null, 4, 5, 6, 7],
+      accuracy: [null, null, null, null, null],
+      score: [null, null, null, null, null],
       hintSeen: true,
     }),
   );
 }
 
-console.log('Hop rules passed.');
+{
+  const level = LEVELS[0];
+  const round = new HopRound(0);
+  assert.equal(round.accuracy, null);
+  round.release();
+  round.update(0.1, sample(level, { x: level.x + (level.radius - 0.01) * 0.6 }));
+  round.release();
+  assert.equal(round.settledFor, 0, 'release clears pending settle timer');
+  assert.equal(round.accuracy, null, 'release clears pending placement');
+  round.update(0.1, sample(level, { x: level.x + (level.radius - 0.01) * 0.6 }));
+  for (let i = 0; i < 5; i++) round.update(0.1, sample(level));
+  assert.equal(round.accuracy, 40, 'score uses worst position throughout settling');
+  round.update(0.1, sample(level));
+  assert.equal(round.accuracy, 40, 'completed score is frozen');
+  round.reset();
+  assert.equal(round.accuracy, null);
+  round.release();
+  round.update(0.1, sample(level, { x: level.x + 0.04 }));
+  round.update(0.1, sample(level, { grabbing: true }));
+  round.update(0, sample(level, { x: level.x + 0.04 }));
+  for (let i = 0; i < 6; i++) round.update(0.1, sample(level));
+  assert.equal(round.accuracy, 100, 'interrupted settling clears previous miss');
+  // Landing quality: a throw that jiggles on the pad before going quiet scores below a feather
+  // arrival at the same spot. Thresholds come from measured settle times, 0.15 s to 1.2 s.
+  {
+    const soft = new HopRound(0);
+    soft.release();
+    for (let i = 0; i < 8; i++) soft.update(0.1, sample(level));
+    assert.equal(soft.complete, true);
+    assert.equal(soft.landing, 100, 'a throw that never wobbles lands perfectly');
+    assert.equal(soft.score, soft.accuracy, 'a clean landing leaves placement untouched');
+
+    const splat = new HopRound(0);
+    splat.release();
+    // Grounded and on the pad, but still above the quiet threshold: that is the wobble.
+    for (let i = 0; i < 10; i++) splat.update(0.1, sample(level, { speed: 0.2 }));
+    assert.equal(splat.complete, false, 'a wobbling body has not settled');
+    assert.equal(splat.landing, null, 'landing is only scored once the round completes');
+    for (let i = 0; i < 8; i++) splat.update(0.1, sample(level));
+    assert.equal(splat.complete, true);
+    assert.equal(splat.accuracy, soft.accuracy, 'both stopped in the same place');
+    assert(
+      splat.landing > 0 && splat.landing < 25,
+      `a full second of wobble scores badly but is still a gradient, got ${splat.landing}`,
+    );
+    // The point of the whole thing: landing dead centre is no longer enough on its own.
+    assert.equal(medalForAccuracy(soft.score), 'Gold');
+    assert.equal(medalForAccuracy(splat.score), 'Silver', 'a dead-centre splat drops a medal');
+
+    const retried = new HopRound(0);
+    retried.release();
+    for (let i = 0; i < 10; i++) retried.update(0.1, sample(level, { speed: 0.2 }));
+    retried.release();
+    for (let i = 0; i < 8; i++) retried.update(0.1, sample(level));
+    assert.equal(retried.landing, 100, 'a retry is judged on its own landing');
+  }
+  assert.equal(medalForAccuracy(80), 'Gold');
+  assert.equal(medalForAccuracy(79), 'Silver');
+  assert.equal(medalForAccuracy(50), 'Silver');
+  assert.equal(medalForAccuracy(49), 'Bronze');
+  const old = loadProgress(
+    JSON.stringify({ version: 1, unlocked: 3, best: [2, 3], hintSeen: true }),
+  );
+  assert.equal(old.unlocked, 3);
+  assert.deepEqual(old.accuracy, [null, null, null, null, null]);
+  assert.deepEqual(old.score, [null, null, null, null, null]);
+  const won = recordWin(old, 0, 5, 95, 84);
+  assert.equal(won.best[0], 2);
+  assert.equal(won.accuracy[0], 95);
+  assert.equal(won.score[0], 84);
+  assert.equal(recordWin(won, 0, 1, 30).accuracy[0], 95);
+  assert.equal(recordWin(won, 0, 1, 30).score[0], 84);
+  assert.equal(recordWin(won, 0, 1, 30, 91).score[0], 91);
+  assert.deepEqual(loadProgress(serializeProgress(won)), won);
+  const legacyAccuracy = loadProgress(
+    JSON.stringify({ version: 1, unlocked: 2, best: [1], accuracy: [88], hintSeen: true }),
+  );
+  assert.equal(legacyAccuracy.accuracy[0], 88);
+  assert.equal(legacyAccuracy.score[0], null, 'legacy accuracy is not reinterpreted as score');
+  const malformed = loadProgress(
+    JSON.stringify({
+      ...won,
+      accuracy: [-1, '90', 1.5, null, 101],
+      score: [-1, '90', 1.5, null, 101],
+    }),
+  );
+  assert.deepEqual(malformed.accuracy, [null, null, null, null, 100]);
+  assert.deepEqual(malformed.score, [null, null, null, null, 100]);
+}
+console.log('Hop rules and bullseye persistence passed.');
